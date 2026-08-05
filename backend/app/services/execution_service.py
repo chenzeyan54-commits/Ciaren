@@ -70,8 +70,16 @@ def compute_node_drift(
     if not previous:
         return None
 
-    prev_by_id = {r.get("node_id"): r for r in previous}
-    cur_by_id = {r.get("node_id"): r for r in current}
+    prev_by_id: dict[str, dict[str, Any]] = {}
+    for r in previous:
+        node_id = r.get("node_id")
+        if isinstance(node_id, str):
+            prev_by_id[node_id] = r
+    cur_by_id: dict[str, dict[str, Any]] = {}
+    for r in current:
+        node_id = r.get("node_id")
+        if isinstance(node_id, str):
+            cur_by_id[node_id] = r
 
     def _cols(result: dict[str, Any] | None) -> set[str]:
         return set(result.get("columns") or []) if result else set()
