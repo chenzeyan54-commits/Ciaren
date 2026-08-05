@@ -38,7 +38,7 @@ from app.engine.process_pool import (
 )
 from app.engine.run_context import run_context
 from app.plugin_api.events import EventBus, Hook
-from app.schemas.run import FlowRunCreate, FlowRunRead, FlowRunSummary
+from app.schemas.run import FlowRunCreate, FlowRunRead, FlowRunSummary, NodeDrift, RunDrift
 from app.services.dataset_resolver import build_dataset_paths
 from app.services.dataset_service import DatasetService
 from app.services.sql_resolver import materialize_sql_inputs, push_sql_outputs
@@ -50,6 +50,71 @@ _OUTPUT_TYPE_MAP = {"csvOutput": "csv", "excelOutput": "excel", "parquetOutput":
 # StrEnum members compare equal to their str value, so this works for `x in ...`
 # checks against the raw EXECUTION_MODE setting string.
 _EXECUTION_MODES = tuple(ExecutionMode)
+
+
+def compute_node_drift(
+    current_results: list[dict[str, Any]] | None,
+    previous_results: list[dict[str, Any]] | None,
+) -> tuple[list[NodeDrift], list[str], list[str]] | None:
+    """Per-node schema/row-count drift between two runs' ``node_results_json``.
+
+    Column comparison is an order-insensitive set diff (a column reorder is not
+    a schema change). Only nodes that actually changed are reported, so the
+    caller can keep the UI silent when nothing moved. Returns ``None`` when
+    there is no previous run to compare against (its results are empty).
+
+    Kept as a pure function for direct unit testing without a DB session.
+    """
+    current = current_results or []
+    previous = previous_results or []
+    if not previous:
+        return None
+
+    prev_by_id = {r.get("node_id"): r for r in previous}
+    cur_by_id = {r.get("node_id"): r for r in current}
+
+    def _cols(result: dict[str, Any] | None) -> set[str]:
+        return set(result.get("columns") or []) if result else set()
+
+    def _rows(result: dict[str, Any] | None) -> int | None:
+        rows = result.get("rows") if result else None
+        return rows if isinstance(rows, int) else None
+
+    nodes: list[NodeDrift] = []
+    for node_id, cur in cur_by_id.items():
+        prev = prev_by_id.get(node_id)
+        if prev is None:
+            continue  # reported in nodes_added below
+        prev_cols = _cols(prev)
+        cur_cols = _cols(cur)
+        columns_added = sorted(cur_cols - prev_cols)
+        columns_removed = sorted(prev_cols - cur_cols)
+        rows_before = _rows(prev)
+        rows_after = _rows(cur)
+        rows_delta = (
+            rows_after - rows_before
+            if rows_before is not None and rows_after is not None
+            else None
+        )
+        if not columns_added and not columns_removed and rows_delta in (None, 0):
+            continue  # nothing changed for this node — stay silent
+        nodes.append(
+            NodeDrift(
+                node_id=node_id,
+                label=cur.get("label"),
+                rows_before=rows_before,
+                rows_after=rows_after,
+                rows_delta=rows_delta,
+                columns_added=columns_added,
+                columns_removed=columns_removed,
+            )
+        )
+
+    nodes_added = sorted(set(cur_by_id) - set(prev_by_id))
+    nodes_removed = sorted(set(prev_by_id) - set(cur_by_id))
+    if not nodes and not nodes_added and not nodes_removed:
+        return None
+    return nodes, nodes_added, nodes_removed
 
 
 class ExecutionService:
@@ -455,7 +520,49 @@ class ExecutionService:
         run = result.scalar_one_or_none()
         if run is None:
             raise NotFoundError("FlowRun", run_id)
-        return FlowRunRead.model_validate(run)
+        read = FlowRunRead.model_validate(run)
+        read.drift = await self._drift_for_run(run)
+        return read
+
+    async def _previous_run_for_drift(self, run: FlowRun) -> FlowRun | None:
+        """The most recently created earlier run of the same flow.
+
+        Used as the drift baseline. Runs that recorded no node results (e.g.
+        cancelled before any node finished, or concurrent runs still executing
+        with nothing written yet) are skipped downstream because they are not a
+        meaningful baseline — so a first run with recorded results, or a run
+        whose predecessor produced nothing, shows no diff.
+        """
+        stmt = (
+            select(FlowRun)
+            .where(
+                FlowRun.flow_id == run.flow_id,
+                FlowRun.id != run.id,
+                FlowRun.created_at < run.created_at,
+            )
+            .order_by(desc(FlowRun.created_at), desc(FlowRun.id))
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _drift_for_run(self, run: FlowRun) -> RunDrift | None:
+        """This run's per-node diff vs the previous run of the same flow, or
+        ``None`` on a flow's first run (nothing to compare against)."""
+        previous = await self._previous_run_for_drift(run)
+        if previous is None:
+            return None
+        drift = compute_node_drift(run.node_results_json, previous.node_results_json)
+        if drift is None:
+            return None
+        nodes, nodes_added, nodes_removed = drift
+        return RunDrift(
+            previous_run_id=previous.id,
+            previous_run_created_at=previous.created_at,
+            nodes=nodes,
+            nodes_added=nodes_added,
+            nodes_removed=nodes_removed,
+        )
 
     async def find_by_webhook_idempotency_key(self, flow_id: str, key: str) -> FlowRunRead | None:
         """The run a prior webhook trigger with this Idempotency-Key produced,

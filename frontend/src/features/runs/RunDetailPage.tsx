@@ -4,6 +4,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { AlertCircle, ArrowLeft, Download, Loader2, RotateCcw, ShieldCheck, ShieldAlert, ShieldX, Square } from "lucide-react";
 import { useCancelRun, useRetryRun, useRun } from "./hooks";
 import { MlMetricsPanel } from "./MlMetricsPanel";
+import { RunDriftPanel } from "./RunDriftPanel";
 import { useFlow } from "@/features/flows/hooks";
 import { useDatasets } from "@/features/datasets/hooks";
 import { RunDag } from "@/components/run/RunDag";
@@ -14,7 +15,7 @@ import { formatDuration } from "@/lib/format";
 import { useFormatDateTime } from "@/lib/useFormatDateTime";
 import { getNodeIcon } from "@/lib/nodeVisuals";
 import { cn } from "@/lib/utils";
-import type { InputDatasetRef, NodeResult } from "@/features/runs/types";
+import type { InputDatasetRef, NodeResult, RunDrift } from "@/features/runs/types";
 import type { ParameterValues } from "@/lib/types/shared";
 
 const OUTPUT_NODE_TYPES = new Set(["fileOutput", "csvOutput", "excelOutput", "parquetOutput"]);
@@ -150,6 +151,7 @@ export function RunDetailPage() {
               inputs={inputs}
               datasetName={datasetName}
               parameters={run.parameters}
+              drift={run.drift}
             />
           )}
         </aside>
@@ -163,11 +165,13 @@ function RunSummary({
   inputs,
   datasetName,
   parameters,
+  drift,
 }: {
   results: NodeResult[];
   inputs: InputDatasetRef[];
   datasetName: Map<string, string>;
   parameters: ParameterValues | null;
+  drift: RunDrift | null;
 }) {
   const paramEntries = Object.entries(parameters ?? {});
   const counts = results.reduce(
@@ -176,6 +180,7 @@ function RunSummary({
   );
   return (
     <div className="flex flex-col gap-3 p-4">
+      <RunDriftPanel drift={drift} />
       <h2 className="text-sm font-semibold">Run summary</h2>
       <p className="text-xs text-muted-foreground">
         Select a node in the graph to inspect its output rows and columns.

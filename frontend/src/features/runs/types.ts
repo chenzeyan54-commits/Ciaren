@@ -89,6 +89,28 @@ export interface InputDatasetRef {
   dataset_name: string | null;
 }
 
+/** One node's schema/row-count change vs the previous run of the flow. */
+export interface NodeDrift {
+  node_id: string;
+  label: string | null;
+  rows_before: number | null;
+  rows_after: number | null;
+  rows_delta: number | null;
+  columns_added: string[];
+  columns_removed: string[];
+}
+
+/** This run's node-level diff vs the immediately preceding run of the flow. */
+export interface RunDrift {
+  previous_run_id: string | null;
+  previous_run_created_at: string | null;
+  nodes: NodeDrift[];
+  /** Node ids present in this run but not the previous one (graph grew). */
+  nodes_added: string[];
+  /** Node ids present in the previous run but not this one (graph shrank). */
+  nodes_removed: string[];
+}
+
 export interface FlowRun {
   id: string;
   flow_id: string;
@@ -105,6 +127,8 @@ export interface FlowRun {
   /** Resolved flow-parameter values this run executed with (null if none). */
   parameters: ParameterValues | null;
   created_at: string;
+  /** Per-node diff vs the previous run of the same flow; null on first run. */
+  drift: RunDrift | null;
 }
 
 /** How a run was triggered: a manual click or the background scheduler. */

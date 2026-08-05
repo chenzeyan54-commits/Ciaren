@@ -2086,6 +2086,7 @@
     "FlowRunRead": {
       "properties": {
         "created_at": "string(date-time)",
+        "drift": "anyOf(#RunDrift|null)",
         "engine": "#Engine",
         "error_message": "anyOf(null|string)",
         "finished_at": "anyOf(null|string(date-time))",
@@ -2317,6 +2318,20 @@
         "name"
       ]
     },
+    "NodeDrift": {
+      "properties": {
+        "columns_added": "array<string>",
+        "columns_removed": "array<string>",
+        "label": "anyOf(null|string)",
+        "node_id": "string",
+        "rows_after": "anyOf(integer|null)",
+        "rows_before": "anyOf(integer|null)",
+        "rows_delta": "anyOf(integer|null)"
+      },
+      "required": [
+        "node_id"
+      ]
+    },
     "NodeResultRead": {
       "properties": {
         "assertion_passed": "anyOf(boolean|null)",
@@ -2529,6 +2544,16 @@
     "RevokeRequest": {
       "properties": {
         "permissions": "array<#Permission>"
+      },
+      "required": []
+    },
+    "RunDrift": {
+      "properties": {
+        "nodes": "array<#NodeDrift>",
+        "nodes_added": "array<string>",
+        "nodes_removed": "array<string>",
+        "previous_run_created_at": "anyOf(null|string(date-time))",
+        "previous_run_id": "anyOf(null|string)"
       },
       "required": []
     },
