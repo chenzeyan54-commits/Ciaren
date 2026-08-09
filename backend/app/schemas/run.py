@@ -83,6 +83,36 @@ class NodeResultRead(BaseModel):
     chart: dict[str, Any] | None = None
 
 
+class NodeDrift(BaseModel):
+    """A single node's schema/row-count change vs the previous run of the flow.
+
+    Only fields that actually changed are populated; a node with no change is
+    omitted entirely from :class:`RunDrift`."""
+
+    node_id: str
+    label: str | None = None
+    rows_before: int | None = None
+    rows_after: int | None = None
+    rows_delta: int | None = None
+    columns_added: list[str] = Field(default_factory=list)
+    columns_removed: list[str] = Field(default_factory=list)
+
+
+class RunDrift(BaseModel):
+    """This run's node-level diff vs the immediately preceding run of the flow.
+
+    Read-only and additive to the run detail view — computed at read time from
+    the two runs' recorded ``node_results_json``, never stored."""
+
+    previous_run_id: str | None = None
+    previous_run_created_at: datetime | None = None
+    nodes: list[NodeDrift] = Field(default_factory=list)
+    # Node ids present in this run but not the previous one (graph grew).
+    nodes_added: list[str] = Field(default_factory=list)
+    # Node ids present in the previous run but not this one (graph shrank).
+    nodes_removed: list[str] = Field(default_factory=list)
+
+
 class FlowRunSummary(BaseModel):
     """A lightweight run row for the history list (no per-node samples)."""
 
@@ -123,5 +153,9 @@ class FlowRunRead(BaseModel):
     # flow has no parameters (or for runs created before this existed).
     parameters: dict[str, Any] | None = Field(None, validation_alias="parameters_json")
     created_at: datetime
+
+    # Per-node diff vs the previous run of the same flow — None on the first
+    # run, or when the previous run recorded no results to compare against.
+    drift: RunDrift | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
