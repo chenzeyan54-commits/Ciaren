@@ -69,7 +69,7 @@ export default defineConfig({
     'Open-source, plugin-first platform for building Data Engineering and Machine Learning workflows visually — and exporting clean, portable pandas/polars Python. Local-first, no lock-in.',
   lang: 'en-US',
   base: docsBasePath,
-  srcExclude: ['README.md'],
+  srcExclude: ['README.md', 'agent-runs/**'],
 
   head: [
     ['meta', { name: 'theme-color', content: '#7c3aed' }],
