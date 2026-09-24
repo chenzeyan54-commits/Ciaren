@@ -43,16 +43,4 @@ rows missing an `amount` are removed — rows with other nulls (like `region`) s
 
 ## Generated Python code
 
-```python
-df_2 = df_1.dropna(subset='amount')
-```
-
-## Tips & common mistakes
-
-- **`how: all` needs a `subset`** to be meaningful row-wise — pair it with the
-  columns that define an "empty" row.
-- To *keep* rows and fill the gaps instead, use [Fill nulls](./fill-nulls.md).
-
-## See also
-
-- [Fill nulls](./fill-nulls.md) · [Filter rows](./filter-rows.md)
+**pandas**
